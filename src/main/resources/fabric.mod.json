@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "possessedgrin",
+  "version": "${version}",
+  "name": "Requiem: Possessed Grin",
+  "description": "The ultimate Requiem addon. Possessed mobs get the demonic powers of The Exorcist: levitation (floating flat), telekinesis, telepathy, the head turn, green bile, poltergeist fury, an icy presence, a demon's voice, unholy strength and the spider-walk. Possessed bodies turn pale and veined with glowing white eyes and a malicious grin. The haunting follows you: knocking in the walls, dying lights, rattling furniture. Cleric villagers fight back with holy water and can cast you out. Craft an Ouija board to hold a seance. Possess the Warden, Wither and Ender Dragon with their real attacks, and even passive mobs can fight.",
+  "authors": [
+    "YourName"
+  ],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.possessedgrin.PossessedGrinMod"
+    ],
+    "client": [
+      "com.possessedgrin.client.PossessedGrinClient"
+    ],
+    "requiem:plugin": [
+      "com.possessedgrin.PossessedGrinPlugin"
+    ]
+  },
+  "mixins": [
+    "possessedgrin.mixins.json"
+  ],
+  "depends": {
+    "minecraft": "1.19.2",
+    "requiem": "*"
+  },
+  "suggests": {
+    "pandemonium": "*"
+  }
+}
