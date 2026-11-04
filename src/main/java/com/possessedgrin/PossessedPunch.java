@@ -1,6 +1,7 @@
 package com.possessedgrin;
 
 import com.possessedgrin.mixin.DefaultAttributeContainerAccessor;
+import com.possessedgrin.stage.Stages;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.attribute.DefaultAttributeContainer;
 import net.minecraft.entity.attribute.EntityAttributeInstance;
@@ -69,8 +70,8 @@ public final class PossessedPunch {
     }
 
     /**
-     * Called right before a mob attacks. Possessed mobs hit with unholy strength: +50% damage and a hard shove,
-     * plus the base punch for mobs that had no attack of their own.
+     * Called right before a mob attacks. Possessed mobs that had no attack of their own get the base punch; from
+     * stage III every possessed mob hits with unholy strength: +50% damage and a hard shove.
      */
     public static void beforeAttack(MobEntity mob) {
         if (!PossessedGrin.isPossessed(mob)) {
@@ -82,6 +83,9 @@ public final class PossessedPunch {
         }
         if (WITH_ATTACK_STAT.containsKey(mob.getType())) {
             addOnce(attack, PUNCH_MODIFIER_ID, "Possessed punch", punchDamage(mob), EntityAttributeModifier.Operation.ADDITION);
+        }
+        if (Stages.of(mob) < Stages.POSSESSION) {
+            return;     // unholy strength awakens at stage III
         }
         addOnce(attack, STRENGTH_MODIFIER_ID, "Unholy strength", UNHOLY_STRENGTH, EntityAttributeModifier.Operation.MULTIPLY_TOTAL);
         EntityAttributeInstance knockback = mob.getAttributeInstance(EntityAttributes.GENERIC_ATTACK_KNOCKBACK);

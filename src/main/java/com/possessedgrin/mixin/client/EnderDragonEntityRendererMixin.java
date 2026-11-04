@@ -1,7 +1,7 @@
 package com.possessedgrin.mixin.client;
 
-import com.possessedgrin.PossessedGrin;
 import com.possessedgrin.client.DragonFace;
+import com.possessedgrin.client.PossessedLook;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.entity.EnderDragonEntityRenderer;
 import net.minecraft.client.util.math.MatrixStack;
@@ -26,8 +26,9 @@ public abstract class EnderDragonEntityRendererMixin {
     @Inject(method = RENDER, at = @At("TAIL"))
     private void possessedgrin$drawFace(EnderDragonEntity dragon, float yaw, float tickDelta, MatrixStack matrices,
                                         VertexConsumerProvider vertexConsumers, int light, CallbackInfo ci) {
-        if (PossessedGrin.isPossessed(dragon) && !dragon.isInvisible()) {
-            DragonFace.draw(vertexConsumers, light);
+        PossessedLook look = PossessedLook.of(dragon, tickDelta);
+        if (look != null && !dragon.isInvisible()) {
+            DragonFace.draw(vertexConsumers, light, look);
         }
     }
 }

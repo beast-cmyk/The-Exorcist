@@ -36,7 +36,15 @@ import java.util.WeakHashMap;
 public final class FaceDecals {
     public static final Identifier FACE = PossessedGrin.id("textures/entity/possessed/generic_face.png");
     public static final Identifier EYES = PossessedGrin.id("textures/entity/possessed/generic_eyes.png");
+    public static final Identifier BLOOD = PossessedGrin.id("textures/entity/possessed/generic_blood.png");
+    /** The face once the body has rotted to the bone, and its pinpoint eyes. */
+    public static final Identifier SKULL = PossessedGrin.id("textures/entity/possessed/generic_skull.png");
+    public static final Identifier SKULL_EYES = PossessedGrin.id("textures/entity/possessed/generic_skull_eyes.png");
+    /** The demon's own face, seen for a few frames at a time. */
+    public static final Identifier TRUE_FACE = PossessedGrin.id("textures/entity/possessed/generic_true_face.png");
     static final int FULL_BRIGHT = 0xF00000;
+    /** Full block and sky light, for the true face: it shows even in the dark. */
+    private static final int LIT = 0xF000F0;
 
     /** How far in front of the face the decal floats, in model pixels: clears sheep wool and similar outer layers. */
     private static final float OFFSET = 0.65F;
@@ -51,22 +59,56 @@ public final class FaceDecals {
     private FaceDecals() {
     }
 
-    public static void render(EntityModel<?> model, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light, int overlay) {
+    public static void render(EntityModel<?> model, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light, int overlay,
+                              PossessedLook look) {
         List<Target> targets = TARGETS.computeIfAbsent(model, FaceDecals::findTargets);
         if (targets.isEmpty()) {
             return;
         }
-        VertexConsumer face = vertexConsumers.getBuffer(RenderLayer.getEntityCutoutNoCull(FACE));
-        for (Target target : targets) {
-            draw(model, target, matrices, face, light, overlay);
+        if (look.face()) {
+            VertexConsumer face = vertexConsumers.getBuffer(RenderLayer.getEntityTranslucent(FACE));
+            for (Target target : targets) {
+                draw(model, target, matrices, face, light, overlay, 1.0F);
+            }
         }
-        VertexConsumer eyes = vertexConsumers.getBuffer(RenderLayer.getEyes(EYES));
-        for (Target target : targets) {
-            draw(model, target, matrices, eyes, FULL_BRIGHT, OverlayTexture.DEFAULT_UV);
+        if (look.blood()) {
+            VertexConsumer blood = vertexConsumers.getBuffer(RenderLayer.getEntityCutoutNoCull(BLOOD));
+            for (Target target : targets) {
+                draw(model, target, matrices, blood, light, overlay, 1.0F);
+            }
+        }
+        if (look.eyes()) {
+            VertexConsumer eyes = vertexConsumers.getBuffer(RenderLayer.getEyes(EYES));
+            for (Target target : targets) {
+                draw(model, target, matrices, eyes, FULL_BRIGHT, OverlayTexture.DEFAULT_UV, look.glow());
+            }
         }
     }
 
-    private static void draw(EntityModel<?> model, Target target, MatrixStack matrices, VertexConsumer vertices, int light, int overlay) {
+    /** A skull over the front of the head, with two burning points of light deep in its sockets. */
+    public static void renderSkull(EntityModel<?> model, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light, int overlay,
+                                   float glow) {
+        List<Target> targets = TARGETS.computeIfAbsent(model, FaceDecals::findTargets);
+        VertexConsumer skull = vertexConsumers.getBuffer(RenderLayer.getEntityTranslucent(SKULL));
+        for (Target target : targets) {
+            draw(model, target, matrices, skull, light, overlay, 1.0F);
+        }
+        VertexConsumer eyes = vertexConsumers.getBuffer(RenderLayer.getEyes(SKULL_EYES));
+        for (Target target : targets) {
+            draw(model, target, matrices, eyes, FULL_BRIGHT, OverlayTexture.DEFAULT_UV, glow);
+        }
+    }
+
+    /** The demon's true face over the head, fully lit. */
+    public static void renderTrueFace(EntityModel<?> model, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int overlay) {
+        VertexConsumer face = vertexConsumers.getBuffer(RenderLayer.getEntityTranslucent(TRUE_FACE));
+        for (Target target : TARGETS.computeIfAbsent(model, FaceDecals::findTargets)) {
+            draw(model, target, matrices, face, LIT, overlay, 1.0F);
+        }
+    }
+
+    private static void draw(EntityModel<?> model, Target target, MatrixStack matrices, VertexConsumer vertices, int light, int overlay,
+                             float brightness) {
         for (ModelPart part : target.path()) {
             if (!part.visible) {
                 return;
@@ -91,7 +133,7 @@ public final class FaceDecals {
         float height = Math.min(box.maxY - box.minY, width * 1.25F);
         MatrixStack.Entry entry = matrices.peek();
         quad(entry.getPositionMatrix(), entry.getNormalMatrix(), vertices,
-                box.minX, box.minY, box.maxX, box.minY + height, box.minZ - OFFSET, light, overlay);
+                box.minX, box.minY, box.maxX, box.minY + height, box.minZ - OFFSET, light, overlay, brightness);
         matrices.pop();
     }
 
@@ -101,16 +143,21 @@ public final class FaceDecals {
      */
     static void quad(Matrix4f position, Matrix3f normal, VertexConsumer vertices,
                      float x1, float y1, float x2, float y2, float z, int light, int overlay) {
-        vertex(position, normal, vertices, x2, y1, z, 1.0F, 0.0F, light, overlay);
-        vertex(position, normal, vertices, x1, y1, z, 0.0F, 0.0F, light, overlay);
-        vertex(position, normal, vertices, x1, y2, z, 0.0F, 1.0F, light, overlay);
-        vertex(position, normal, vertices, x2, y2, z, 1.0F, 1.0F, light, overlay);
+        quad(position, normal, vertices, x1, y1, x2, y2, z, light, overlay, 1.0F);
+    }
+
+    static void quad(Matrix4f position, Matrix3f normal, VertexConsumer vertices,
+                     float x1, float y1, float x2, float y2, float z, int light, int overlay, float brightness) {
+        vertex(position, normal, vertices, x2, y1, z, 1.0F, 0.0F, light, overlay, brightness);
+        vertex(position, normal, vertices, x1, y1, z, 0.0F, 0.0F, light, overlay, brightness);
+        vertex(position, normal, vertices, x1, y2, z, 0.0F, 1.0F, light, overlay, brightness);
+        vertex(position, normal, vertices, x2, y2, z, 1.0F, 1.0F, light, overlay, brightness);
     }
 
     private static void vertex(Matrix4f position, Matrix3f normal, VertexConsumer vertices,
-                               float x, float y, float z, float u, float v, int light, int overlay) {
+                               float x, float y, float z, float u, float v, int light, int overlay, float brightness) {
         vertices.vertex(position, x / 16.0F, y / 16.0F, z / 16.0F)
-                .color(1.0F, 1.0F, 1.0F, 1.0F)
+                .color(brightness, brightness, brightness, 1.0F)
                 .texture(u, v)
                 .overlay(overlay)
                 .light(light)

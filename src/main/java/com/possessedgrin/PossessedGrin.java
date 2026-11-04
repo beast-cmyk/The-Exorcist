@@ -9,6 +9,8 @@ import net.minecraft.util.Identifier;
 import net.minecraft.util.registry.Registry;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Locale;
+
 /** Shared ids, tags and helpers. */
 public final class PossessedGrin {
     public static final String MOD_ID = "possessedgrin";
@@ -41,5 +43,20 @@ public final class PossessedGrin {
 
     public static boolean isPossessed(@Nullable Entity entity) {
         return entity instanceof Possessable possessable && possessable.isBeingPossessed();
+    }
+
+    /** "the villager", or its name if it has one ("Steve the villager" becomes just "Steve"). */
+    public static String the(Entity entity) {
+        return entity.hasCustomName() ? entity.getName().getString() : "the " + kind(entity);
+    }
+
+    /** The mob's type in lower case: "villager", "iron golem". */
+    public static String kind(Entity entity) {
+        return entity.getType().getName().getString().toLowerCase(Locale.ROOT);
+    }
+
+    /** What to call it at the start of a line: "Villager", or its name. */
+    public static String label(Entity entity) {
+        return entity.hasCustomName() ? entity.getName().getString() : entity.getType().getName().getString();
     }
 }

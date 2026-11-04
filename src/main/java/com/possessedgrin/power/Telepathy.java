@@ -1,12 +1,11 @@
 package com.possessedgrin.power;
 
-import ladysnake.requiem.api.v1.possession.PossessionComponent;
-import net.minecraft.entity.Entity;
+import com.possessedgrin.PossessedGrin;
+import com.possessedgrin.stage.Stages;
+import com.possessedgrin.voice.Conversation;
+import com.possessedgrin.voice.HostSoul;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.entity.passive.MerchantEntity;
-import net.minecraft.entity.passive.TameableEntity;
-import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.projectile.ProjectileUtil;
 import net.minecraft.item.ItemStack;
@@ -30,10 +29,12 @@ import java.util.Optional;
 
 /**
  * Telepathy. Your mind opens (your client also makes every creature nearby glow through walls for 10 seconds),
- * and you read whoever you're looking at, or the nearest player: their health, hunger, what they're holding,
- * where they stand and where they last died. Creatures give up their thoughts: who they're hunting, who
- * they fear, who they're loyal to, what they're doing. A player you read hears a voice in their head that knows things
- * it shouldn't.
+ * and you read whoever you're looking at, or the nearest player.
+ *
+ * <p>A creature's thoughts pour out in its own words, built from what its mind is really doing (see
+ * {@link MindReader}). A player you read gives up their health, hunger, what they're holding and where they've
+ * died, and hears a voice in their head that knows things it shouldn't. With nobody to read, your mind turns
+ * inward to the trapped soul of the body you're wearing.
  */
 public final class Telepathy {
     private static final double RANGE = 64.0;
@@ -50,7 +51,7 @@ public final class Telepathy {
             target = nearestPlayer(player, world);
         }
         if (target == null) {
-            say(player, Text.literal("You reach out with your mind... no one is near.").formatted(Formatting.DARK_GRAY, Formatting.ITALIC));
+            readInward(player, host);
             return true;
         }
 
@@ -58,7 +59,7 @@ public final class Telepathy {
             readPlayer(player, victim);
             whisperTo(victim, host);
         } else {
-            readCreature(player, target);
+            readCreature(player, host, target);
         }
         return true;
     }
@@ -75,48 +76,40 @@ public final class Telepathy {
                 .orElse("they have never died... yet")));
     }
 
-    private static void readCreature(ServerPlayerEntity reader, LivingEntity creature) {
-        say(reader, Text.literal("You slip into the " + creature.getName().getString() + "'s mind:").formatted(Formatting.DARK_RED, Formatting.BOLD));
-        say(reader, line("Hearts", hearts(creature)));
-        say(reader, line("Holding", itemName(creature.getMainHandStack())));
-        if (creature instanceof MobEntity mob && mob.getTarget() != null) {
-            say(reader, line("It is hunting", mob.getTarget().getName().getString()));
+    private static void readCreature(ServerPlayerEntity reader, MobEntity host, LivingEntity creature) {
+        String who = creature.hasCustomName()
+                ? creature.getName().getString() + " the " + PossessedGrin.kind(creature)
+                : "the " + PossessedGrin.kind(creature);
+        say(reader, Text.literal("You slip into the mind of " + who + "...").formatted(Formatting.DARK_RED, Formatting.BOLD));
+        say(reader, Text.literal("  Hearts: ").formatted(Formatting.GRAY)
+                .append(Text.literal(hearts(creature)).formatted(Formatting.WHITE))
+                .append(Text.literal("   Holding: ").formatted(Formatting.GRAY))
+                .append(Text.literal(itemName(creature.getMainHandStack())).formatted(Formatting.WHITE)));
+        for (String thought : MindReader.thoughts(reader, host, creature)) {
+            say(reader, Text.literal("  ~ ").formatted(Formatting.DARK_PURPLE)
+                    .append(Text.literal("\"" + thought + "\"").formatted(Formatting.LIGHT_PURPLE, Formatting.ITALIC)));
         }
-        say(reader, line("Its thoughts", thoughts(reader, creature)));
     }
 
-    /** What a creature is thinking, read from what it's actually doing right now. */
-    private static String thoughts(ServerPlayerEntity reader, LivingEntity creature) {
-        MobEntity host = PossessionComponent.getHost(reader);
-        if (creature.isSleeping()) {
-            return "dreaming. It has no idea you're here.";
+    /** Nobody to read: your mind turns inward, to the soul of the body you're wearing. */
+    private static void readInward(ServerPlayerEntity reader, MobEntity host) {
+        int stage = Stages.of(host);
+        say(reader, Text.literal("You turn your mind inward, to the soul of " + PossessedGrin.the(host) + " (stage "
+                + PossessedPowers.roman(stage) + ", " + Stages.name(stage) + ")...").formatted(Formatting.DARK_AQUA, Formatting.BOLD));
+        say(reader, Text.literal("  " + HostSoul.mood(stage)).formatted(Formatting.GRAY, Formatting.ITALIC));
+        long ticksLeft = Math.max(0L, Stages.LIFETIME - Math.max(0L, Stages.elapsed(host)));
+        say(reader, Text.literal("  You have drawn " + Math.round(Stages.drain(host) * 100.0F) + "% of its life. It has about "
+                + Math.max(1L, (ticksLeft + 600L) / 1200L) + " minutes left.").formatted(Formatting.DARK_GRAY, Formatting.ITALIC));
+        say(reader, Text.literal("  ~ ").formatted(Formatting.DARK_AQUA)
+                .append(Text.literal("\"" + Conversation.fill(HostSoul.innerThought(host, stage), host, host, reader) + "\"")
+                        .formatted(Formatting.AQUA, Formatting.ITALIC)));
+        for (String memory : MindReader.thoughts(reader, null, host)) {
+            if (memory.startsWith("Home") || memory.startsWith("My ") || memory.contains("hurt me") || memory.startsWith("Still furious")) {
+                say(reader, Text.literal("  It remembers: ").formatted(Formatting.DARK_GRAY)
+                        .append(Text.literal(memory).formatted(Formatting.GRAY, Formatting.ITALIC)));
+            }
         }
-        if (creature instanceof MerchantEntity merchant && merchant.hasCustomer() && merchant.getCustomer() != null) {
-            return "haggling with " + merchant.getCustomer().getName().getString() + ", trying to get a better price";
-        }
-        if (creature instanceof MobEntity mob && mob.getTarget() != null) {
-            LivingEntity target = mob.getTarget();
-            return target == host || target == reader ? "it wants YOU dead" : "fixed on killing " + target.getName().getString();
-        }
-        LivingEntity attacker = creature.getAttacker();
-        if (attacker != null) {
-            return attacker == host || attacker == reader
-                    ? "terrified of you, desperate to get away"
-                    : "frightened, still smarting from " + attacker.getName().getString() + "'s attack";
-        }
-        if (creature instanceof TameableEntity pet && pet.isTamed() && pet.getOwner() != null) {
-            return "loyal to " + pet.getOwner().getName().getString() + ". You could change that.";
-        }
-        if (creature.isBaby()) {
-            return "a child's mind. It doesn't understand what you are.";
-        }
-        if (creature instanceof VillagerEntity villager) {
-            String job = villager.getVillagerData().getProfession().id();
-            return job.equals("none") || job.equals("nitwit")
-                    ? "idle and bored, and uneasy around you"
-                    : "thinking about its work as a " + job + ", and trying not to look at you";
-        }
-        return "blank, animal, afraid of you";
+        say(reader, Text.literal("  (Look straight at a creature to read its mind instead.)").formatted(Formatting.DARK_GRAY));
     }
 
     /** What the victim hears: one line picked at random, built from things only they should know. */
@@ -128,7 +121,7 @@ public final class Telepathy {
         whispers.add(hearts(victim) + " hearts... how fragile you are.");
         whispers.add("Standing at " + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + "? Hiding won't help.");
         whispers.add("Don't turn around.");
-        whispers.add("Something is wearing a " + host.getType().getName().getString().toLowerCase() + " tonight. Guess what.");
+        whispers.add("Something is wearing a " + PossessedGrin.kind(host) + " tonight. Guess what.");
         if (!victim.getMainHandStack().isEmpty()) {
             whispers.add("That " + itemName(victim.getMainHandStack()).toLowerCase() + " won't save you.");
         }

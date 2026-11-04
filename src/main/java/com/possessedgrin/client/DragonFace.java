@@ -22,6 +22,7 @@ public final class DragonFace {
     private static final Identifier EYES_FACE = PossessedGrin.id("textures/entity/possessed/dragon_eyes.png");
     private static final Identifier EYES_GLOW = PossessedGrin.id("textures/entity/possessed/dragon_eyes_glow.png");
     private static final Identifier GRIN = PossessedGrin.id("textures/entity/possessed/dragon_grin.png");
+    private static final Identifier BLOOD = PossessedGrin.id("textures/entity/possessed/dragon_blood.png");
     private static final float OFFSET = 0.3F;
 
     @Nullable private static ModelPart head;
@@ -47,7 +48,7 @@ public final class DragonFace {
         matrices.pop();
     }
 
-    public static void draw(VertexConsumerProvider vertexConsumers, int light) {
+    public static void draw(VertexConsumerProvider vertexConsumers, int light, PossessedLook look) {
         if (head == null || position == null || normal == null) {
             return;
         }
@@ -65,13 +66,22 @@ public final class DragonFace {
         float eyesBottom = skull.minY + (skull.maxY - skull.minY) * 0.45F;
         int overlay = OverlayTexture.DEFAULT_UV;
 
-        VertexConsumer eyes = vertexConsumers.getBuffer(RenderLayer.getEntityCutoutNoCull(EYES_FACE));
-        FaceDecals.quad(position, normal, eyes, skull.minX, skull.minY, skull.maxX, eyesBottom, skull.minZ - OFFSET, light, overlay);
-        if (snout != null) {
-            VertexConsumer grin = vertexConsumers.getBuffer(RenderLayer.getEntityCutoutNoCull(GRIN));
-            FaceDecals.quad(position, normal, grin, snout.minX, snout.minY, snout.maxX, snout.maxY, snout.minZ - OFFSET, light, overlay);
+        if (look.face()) {
+            VertexConsumer eyes = vertexConsumers.getBuffer(RenderLayer.getEntityTranslucent(EYES_FACE));
+            FaceDecals.quad(position, normal, eyes, skull.minX, skull.minY, skull.maxX, eyesBottom, skull.minZ - OFFSET, light, overlay);
+            if (snout != null) {
+                VertexConsumer grin = vertexConsumers.getBuffer(RenderLayer.getEntityCutoutNoCull(GRIN));
+                FaceDecals.quad(position, normal, grin, snout.minX, snout.minY, snout.maxX, snout.maxY, snout.minZ - OFFSET, light, overlay);
+            }
         }
-        VertexConsumer glow = vertexConsumers.getBuffer(RenderLayer.getEyes(EYES_GLOW));
-        FaceDecals.quad(position, normal, glow, skull.minX, skull.minY, skull.maxX, eyesBottom, skull.minZ - OFFSET, FaceDecals.FULL_BRIGHT, overlay);
+        if (look.blood()) {
+            VertexConsumer blood = vertexConsumers.getBuffer(RenderLayer.getEntityCutoutNoCull(BLOOD));
+            FaceDecals.quad(position, normal, blood, skull.minX, skull.minY, skull.maxX, eyesBottom, skull.minZ - OFFSET, light, overlay);
+        }
+        if (look.eyes()) {
+            VertexConsumer glow = vertexConsumers.getBuffer(RenderLayer.getEyes(EYES_GLOW));
+            FaceDecals.quad(position, normal, glow, skull.minX, skull.minY, skull.maxX, eyesBottom, skull.minZ - OFFSET,
+                    FaceDecals.FULL_BRIGHT, overlay, look.glow());
+        }
     }
 }

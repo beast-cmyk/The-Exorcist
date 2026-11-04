@@ -24,13 +24,16 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Draws glowing white eyes and a malicious grin on any mob that a Requiem player is currently possessing.
+ * Draws the possession on any mob that a Requiem player is currently possessing, stage by stage (see
+ * {@link PossessedLook}): flickering white eyes, then the sickly skin, glowing eyes, the malicious grin and fangs,
+ * then blood, bruises and a corpse's pallor.
  *
  * <p>Humanoids have hand-made faces that match their own textures exactly; every other mob gets the generic
  * face decal from {@link FaceDecals}.
  *
  * <p>Textures are looked up by entity id:
- * {@code assets/possessedgrin/textures/entity/possessed/<namespace>/<path>_face.png} and {@code ..._eyes.png}.
+ * {@code assets/possessedgrin/textures/entity/possessed/<namespace>/<path>_face.png}, {@code ..._eyes.png} and
+ * {@code ..._blood.png}.
  * They use the same size and UV layout as the mob's own texture. Mobs without a face texture are left alone,
  * so a resource pack can add support for more mobs just by adding PNGs.
  */
@@ -64,22 +67,40 @@ public class PossessedFaceFeatureRenderer<T extends LivingEntity, M extends Enti
     public void render(MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light, T entity,
                        float limbAngle, float limbDistance, float tickDelta, float animationProgress,
                        float headYaw, float headPitch) {
-        if (entity.isInvisible() || !isPossessed(entity)) {
+        if (entity.isInvisible()) {
+            return;
+        }
+        PossessedLook look = PossessedLook.of(entity, tickDelta);
+        if (look == null) {
             return;
         }
         M model = this.getContextModel();
+        int overlay = LivingEntityRenderer.getOverlay(entity, 0.0F);
 
-        // The possessed skin: pale, veined and cracked, drawn see-through over the mob's own skin
-        Identifier skin = PossessedSkins.skinFor(this.getTexture(entity));
-        if (skin != null) {
-            VertexConsumer skinLayer = vertexConsumers.getBuffer(RenderLayer.getEntityTranslucent(skin));
-            model.render(matrices, skinLayer, light, LivingEntityRenderer.getOverlay(entity, 0.0F), 1.0F, 1.0F, 1.0F, 1.0F);
+        // The possessed skin: pale, veined and cracked (stage II), then bloodied and bruised (stage III)
+        if (look.skinLevel() > 0) {
+            Identifier skin = PossessedSkins.skinFor(this.getTexture(entity), look.skinLevel());
+            if (skin != null) {
+                VertexConsumer skinLayer = vertexConsumers.getBuffer(RenderLayer.getEntityTranslucent(skin));
+                model.render(matrices, skinLayer, light, overlay, 1.0F, 1.0F, 1.0F, 1.0F);
+            }
+        }
+
+        // For a few frames, the thing inside shows its own face
+        if (TrueFace.showing(entity)) {
+            FaceDecals.renderTrueFace(model, matrices, vertexConsumers, overlay);
+            return;
+        }
+        // Rotted to the bone: a skull for a face, whatever the mob
+        if (look.decay() >= 2) {
+            FaceDecals.renderSkull(model, matrices, vertexConsumers, light, overlay, look.glow());
+            return;
         }
 
         FaceTextures textures = this.cache.computeIfAbsent(entity.getType(), PossessedFaceFeatureRenderer::resolve).orElse(null);
         if (textures == null) {
             // No hand-made face for this mob: use the generic face decal on its head
-            FaceDecals.render(model, matrices, vertexConsumers, light, LivingEntityRenderer.getOverlay(entity, 0.0F));
+            FaceDecals.render(model, matrices, vertexConsumers, light, overlay, look);
             return;
         }
 
@@ -90,13 +111,19 @@ public class PossessedFaceFeatureRenderer<T extends LivingEntity, M extends Enti
         }
 
         try {
-            if (textures.face() != null) {
-                VertexConsumer face = vertexConsumers.getBuffer(RenderLayer.getEntityCutoutNoCull(textures.face()));
-                model.render(matrices, face, light, LivingEntityRenderer.getOverlay(entity, 0.0F), 1.0F, 1.0F, 1.0F, 1.0F);
+            if (look.face() && textures.face() != null) {
+                // Translucent: the high-detail faces have soft, see-through shadows around the eyes
+                VertexConsumer face = vertexConsumers.getBuffer(RenderLayer.getEntityTranslucent(textures.face()));
+                model.render(matrices, face, light, overlay, 1.0F, 1.0F, 1.0F, 1.0F);
             }
-            if (textures.eyes() != null) {
+            if (look.blood() && textures.blood() != null) {
+                VertexConsumer blood = vertexConsumers.getBuffer(RenderLayer.getEntityCutoutNoCull(textures.blood()));
+                model.render(matrices, blood, light, overlay, 1.0F, 1.0F, 1.0F, 1.0F);
+            }
+            if (look.eyes() && textures.eyes() != null) {
+                float glow = look.glow();
                 VertexConsumer eyes = vertexConsumers.getBuffer(RenderLayer.getEyes(textures.eyes()));
-                model.render(matrices, eyes, FULL_BRIGHT, OverlayTexture.DEFAULT_UV, 1.0F, 1.0F, 1.0F, 1.0F);
+                model.render(matrices, eyes, FULL_BRIGHT, OverlayTexture.DEFAULT_UV, glow, glow, glow, 1.0F);
             }
         } finally {
             if (head != null) {
@@ -105,16 +132,12 @@ public class PossessedFaceFeatureRenderer<T extends LivingEntity, M extends Enti
         }
     }
 
-    private static boolean isPossessed(LivingEntity entity) {
-        // Requiem mixes Possessable into every LivingEntity, and syncs the possessor to clients.
-        return PossessedGrin.isPossessed(entity);
-    }
-
     private static Optional<FaceTextures> resolve(EntityType<?> type) {
         Identifier id = EntityType.getId(type);
         String base = "textures/entity/possessed/" + id.getNamespace() + "/" + id.getPath();
         Identifier face = new Identifier(PossessedGrin.MOD_ID, base + "_face.png");
         Identifier eyes = new Identifier(PossessedGrin.MOD_ID, base + "_eyes.png");
+        Identifier blood = new Identifier(PossessedGrin.MOD_ID, base + "_blood.png");
 
         ResourceManager resources = MinecraftClient.getInstance().getResourceManager();
         boolean hasFace = resources.getResource(face).isPresent();
@@ -122,9 +145,11 @@ public class PossessedFaceFeatureRenderer<T extends LivingEntity, M extends Enti
         if (!hasFace && !hasEyes) {
             return Optional.empty();
         }
-        return Optional.of(new FaceTextures(hasFace ? face : null, hasEyes ? eyes : null, FACE_DEPTH.getOrDefault(id, 1.0F)));
+        boolean hasBlood = resources.getResource(blood).isPresent();
+        return Optional.of(new FaceTextures(hasFace ? face : null, hasEyes ? eyes : null, hasBlood ? blood : null,
+                FACE_DEPTH.getOrDefault(id, 1.0F)));
     }
 
-    private record FaceTextures(@Nullable Identifier face, @Nullable Identifier eyes, float depth) {
+    private record FaceTextures(@Nullable Identifier face, @Nullable Identifier eyes, @Nullable Identifier blood, float depth) {
     }
 }
